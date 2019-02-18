@@ -20,8 +20,8 @@
 enum Mode { Record = 0, Replay = 1, Reset = 2 };
 //  notes to play
 const int notes[] = { NOTE_C4, NOTE_D4, NOTE_E4, NOTE_F4 };
-//  note duration in millis for replay
-const int noteDuration = 500;
+//  note duration in 2millis for replay
+const int noteDuration = 125;
 //  button pins, C,D,E,F,Replay,Reset
 const int buttonPins[] = { A0,A1,A2,A3,A4,A5 };
 //const int replayButtonPin = A5;
@@ -40,6 +40,7 @@ volatile bool buttonPressedStates[] = { false, false, false, false, false, false
 bool lastButtonPressedStates[] = { false, false, false, false, false, false };
 
 int pressing;
+int playing;
 
 volatile int playTime;
 
@@ -127,6 +128,7 @@ void record(char n)
 
 void replay()
 {
+	/*
 	for (unsigned int i = 0; i < playedSize; ++i)
 	{
 		play(played[i]);
@@ -134,6 +136,22 @@ void replay()
 	}
 	noPlay();
 	pressing = 6;
+	*/
+	if (playTime > noteDuration)
+	{
+		++playing;
+		if (playing < playedSize)
+		{
+			play(played[playing]);
+			playTime = 0;
+		}
+		else
+		{
+			noPlay();
+			playing = -1;
+			pressing = 6;
+		}
+	}
 }
 
 void reset()
@@ -143,6 +161,7 @@ void reset()
 		played[i] = 0;
 	}
 	playedSize = 0;
+	playing = -1;
 }
 
 void press(int btn, bool state)
@@ -158,9 +177,12 @@ void press(int btn, bool state)
 			play('c' + btn);
 			record('c' + btn);
 			pressing = btn;
+			playing = -1;
 			break;
 		case 4:
 			pressing = btn;
+			playing = -1;
+			playTime = noteDuration+1;
 			replay();
 			break;
 		case 5:
@@ -199,9 +221,10 @@ void readBtn(int btn)
 // the setup function runs once when you press reset or power the board
 void setup() 
 {
-	cli();
+	cli();	//	stop interrupts
 	mode = Record;
 	pressing = 6;
+	playing = -1;
 	//  button inputs
 	pinMode(buttonPins[0], INPUT);
 	pinMode(buttonPins[1], INPUT);
@@ -255,6 +278,10 @@ void loop()
 	for (int i = 0; i < 6; ++i)
 	{
 		readBtn(i);
+	}
+	if (pressing == 4)
+	{
+		replay();
 	}
 }
 
