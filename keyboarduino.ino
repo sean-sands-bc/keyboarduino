@@ -124,6 +124,10 @@ void record(char n)
 	}
 	played[playedSize] = n;
 	++playedSize;
+	if (playedSize > 32) { return; }
+	if (playedSize == 17) { lcd.setCursor(0, 1); }
+	lcd.print(n);
+	
 }
 
 void replay()
@@ -139,16 +143,17 @@ void replay()
 	*/
 	if (playTime > noteDuration)
 	{
-		++playing;
+		
 		if (playing < playedSize)
 		{
 			play(played[playing]);
 			playTime = 0;
+			++playing;
 		}
 		else
 		{
 			noPlay();
-			playing = -1;
+			playing = 0;
 			pressing = 6;
 		}
 	}
@@ -156,12 +161,15 @@ void replay()
 
 void reset()
 {
+	cli();
 	for (unsigned int i = 0; i < playedSize; ++i)
 	{
 		played[i] = 0;
 	}
 	playedSize = 0;
-	playing = -1;
+	playing = 0;
+	lcd.clear();
+	sei();
 }
 
 void press(int btn, bool state)
@@ -177,11 +185,11 @@ void press(int btn, bool state)
 			play('c' + btn);
 			record('c' + btn);
 			pressing = btn;
-			playing = -1;
+			playing = 0;
 			break;
 		case 4:
 			pressing = btn;
-			playing = -1;
+			playing = 0;
 			playTime = noteDuration+1;
 			replay();
 			break;
@@ -224,7 +232,7 @@ void setup()
 	cli();	//	stop interrupts
 	mode = Record;
 	pressing = 6;
-	playing = -1;
+	playing = 0;
 	//  button inputs
 	pinMode(buttonPins[0], INPUT);
 	pinMode(buttonPins[1], INPUT);
@@ -247,6 +255,8 @@ void setup()
 	//	need error handling here
 	playedCap = 255;
 	playedSize = 0;
+
+	lcd.begin(16, 2);
 
 	//noInterrupts();
 	//multithreaded madness goes here
@@ -285,7 +295,7 @@ void loop()
 	}
 }
 
-ISR(TIMER1_COMPA_vect)          // interrupt service routine that wraps a user defined function supplied by attachInterrupt
+ISR(TIMER1_COMPA_vect)          // interrupt service routine keyed to TIMER1_COMPA
 {
 	
 	++playTime;
