@@ -16,8 +16,8 @@
 #include <LiquidCrystal.h>
 
 //  global consts
-//  state enum
-enum Mode { Record = 0, Replay = 1, Reset = 2 };
+//  state enum, superseded by pressing
+//	enum Mode { Record = 0, Replay = 1, Reset = 2 };
 //  notes to play
 const int notes[] = { NOTE_C4, NOTE_D4, NOTE_E4, NOTE_F4 };
 //  note duration in 2millis for replay
@@ -32,36 +32,38 @@ const int speakerPin = 10;
 const int numButtons = 6;
 
 //  global variables
-//  state
-enum Mode mode = Record;
+//  state, superseded by pressing
+//	enum Mode mode = Record;
 //
-volatile int buttonDebounceStates[] = { 0,0,0,0,0,0 };
-volatile bool buttonPressedStates[] = { false, false, false, false, false, false };
-bool lastButtonPressedStates[] = { false, false, false, false, false, false };
+volatile int buttonDebounceStates[] = { 0,0,0,0,0,0 };	//	debounce bitstream buffers
+volatile bool buttonPressedStates[] = { false, false, false, false, false, false };	//	debounced button states
+bool lastButtonPressedStates[] = { false, false, false, false, false, false };	//	button states saved by loop functions
 
-int pressing;
-int playing;
+int pressing;	//	actively pressed button, consider changing to enum
+int playing;	//	currently replaying recorded note
 
-volatile int playTime;
+volatile int playTime;	//	time playing current replay
 
 //liquid crystal globals
-const int rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
-LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
+const int rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;	//	pins
+LiquidCrystal lcd(rs, en, d4, d5, d6, d7);	//	constructed object
 
 //  played note array
 
-char* played = NULL;
-unsigned int playedSize = 0;
-unsigned int playedCap = 0;
+char* played = NULL;	//	char array of played notes
+unsigned int playedSize = 0;	//	number of currently held notes
+unsigned int playedCap = 0;	//	max number of held notes
 
+//	wrapper for digitalreads
 bool rawBtnPressed(int btn)
 {
 	return digitalRead(buttonPins[btn]);
 }
 
+//	update debounce state of button by shifting left and bitwise oring !digitalread, will only change pressedState on a debounceState of 1000... or 0111...
 void debounceBtn(int btn)
 {
-	if (btn >= numButtons) { return; }
+	if (btn >= numButtons) { return; }	//	if button doesn't exist
 	buttonDebounceStates[btn] = (buttonDebounceStates[btn] << 1) | (!rawBtnPressed(btn));// | 0xe000; //  push 1s when off, 0s when on
 	if (buttonDebounceStates[btn] == 0x8000) { buttonPressedStates[btn] = true; } //  1 1 (off) followed by 0s (ons)
 	else if (buttonDebounceStates[btn] == 0x7fff) { buttonPressedStates[btn] = false; } //  0 0(on) followed by 1s (offs)
@@ -78,7 +80,7 @@ void noPlay()
 	digitalWrite(noteLedPins[3], LOW);
 }
 
-//  play a note, turn on corresponding light
+//  play a note, turn on corresponding light and turn off others, this could be streamlined for extensibility
 void play(char note)
 {
 	switch (note)
@@ -116,20 +118,23 @@ void play(char note)
 	}
 }
 
+//	add playing note to note array
 void record(char n)
 {
-	if (playedSize >= playedCap)
+	if (playedSize >= playedCap)	//	full array
 	{
 		return;	//	do nothing for now, maybe update to expand array
 	}
-	played[playedSize] = n;
-	++playedSize;
-	if (playedSize > 32) { return; }
-	if (playedSize == 17) { lcd.setCursor(0, 1); }
-	lcd.print(n);
+	played[playedSize] = n;	//	append note to array
+	++playedSize;	//	increment size
+	//	lcd writing code, could be generalized based on values sent in lcd.begin(col, row) in setup
+	if (playedSize > 32) { return; }	//	full LCD screen
+	if (playedSize == 17) { lcd.setCursor(0, 1); }	//	full LCD first row, change to second row
+	lcd.print(n);	//	append note to screen
 	
 }
 
+//	play next note/stop playing after current note has played for noteDuration
 void replay()
 {
 	/*
@@ -141,37 +146,39 @@ void replay()
 	noPlay();
 	pressing = 6;
 	*/
-	if (playTime > noteDuration)
+	if (playTime > noteDuration)	//	note has played for noteDuration Timer1 ticks
 	{
 		
-		if (playing < playedSize)
+		if (playing < playedSize)	//	if there's another note
 		{
-			play(played[playing]);
-			playTime = 0;
-			++playing;
+			play(played[playing]);	//	play the next note
+			playTime = 0;	//	reset tick timer
+			++playing;	//	increment index
 		}
 		else
 		{
-			noPlay();
-			playing = 0;
-			pressing = 6;
+			noPlay();	//	stop playing
+			playing = 0;	//	reset index
+			pressing = numButtons;	//	reset button state
 		}
 	}
 }
 
 void reset()
 {
-	cli();
-	for (unsigned int i = 0; i < playedSize; ++i)
+	cli();	//	stop interrupts, maybe not necessary but this is code i don't wan't interrupted
+	for (unsigned int i = 0; i < playedSize; ++i)	//	set array to 0
 	{
 		played[i] = 0;
 	}
-	playedSize = 0;
-	playing = 0;
-	lcd.clear();
-	sei();
+	pressing = numButtons;	//	rest button state
+	playedSize = 0;	//	set number of elements to 0
+	playing = 0;	//	set replay index to zero
+	lcd.clear();	//	clear lcd
+	sei();	//	restart interrupts
 }
 
+//	do a thing based on a change of a button state
 void press(int btn, bool state)
 {
 	if (state)
@@ -181,19 +188,19 @@ void press(int btn, bool state)
 		case 0:
 		case 1:
 		case 2:
-		case 3:
+		case 3:	//	note buttons, play a note, record that note, change active button state, reset replay index
 			play('c' + btn);
 			record('c' + btn);
 			pressing = btn;
 			playing = 0;
 			break;
-		case 4:
+		case 4:	//	replay button, change button state, reset replay index, make sure playTime>noteDuration (so start playing first note immediately), call replay
 			pressing = btn;
 			playing = 0;
 			playTime = noteDuration+1;
 			replay();
 			break;
-		case 5:
+		case 5:	//	reset button (clears array)
 			reset();
 			break;
 		}
@@ -206,23 +213,24 @@ void press(int btn, bool state)
 		case 1:
 		case 2:
 		case 3:
-			if (pressing == btn) { noPlay(); pressing = 6; }
+			if (pressing == btn) { noPlay(); pressing = numButtons; }	//	stop playing if active button released
 			break;
 		case 4:
 		case 5:
-			break;
+			break;	//	reset and replay buttons do nothing on release
 		}
 	}
 }
 
+//	compare held last pressed state to volatile pressedstate, do stuff if there's a change
 void readBtn(int btn)
 {
-	if (btn >= numButtons) { return; }
-	bool tempState = buttonPressedStates[btn];
-	if (lastButtonPressedStates[btn] != tempState)
+	if (btn >= numButtons) { return; }	//	button doesn't exist sanity check
+	bool tempState = buttonPressedStates[btn];	//	save debounced press state (to potentially avoid comparing and assigning two different values, though i dunno if the compiler will optimize it away)
+	if (lastButtonPressedStates[btn] != tempState)	//	consider replacing with if lastButtonPressedStates!=buttonPressedStates { lastButtonPressedStates=!lastButtonPressedStates ?
 	{
-		lastButtonPressedStates[btn] = tempState;
-		press(btn, lastButtonPressedStates[btn]);
+		lastButtonPressedStates[btn] = tempState;	//	assign new state
+		press(btn, lastButtonPressedStates[btn]);	//	do stuff based on state change
 	}
 }
 
@@ -230,9 +238,9 @@ void readBtn(int btn)
 void setup() 
 {
 	cli();	//	stop interrupts
-	mode = Record;
-	pressing = 6;
-	playing = 0;
+	//mode = Record;
+	pressing = numButtons;	//	empty buttonpress state
+	playing = 0;	//	replay index
 	//  button inputs
 	pinMode(buttonPins[0], INPUT);
 	pinMode(buttonPins[1], INPUT);
@@ -248,7 +256,7 @@ void setup()
 	//  speaker output
 	pinMode(speakerPin, OUTPUT);  //  though tone should take care of this
 
-	playTime = 0;
+	playTime = 0;	//	note duration timer
 
 	//  initialize played note array
 	played = (char*)calloc(256, sizeof(char));
@@ -256,15 +264,9 @@ void setup()
 	playedCap = 255;
 	playedSize = 0;
 
-	lcd.begin(16, 2);
+	lcd.begin(16, 2);	//	initialize lcd with screen size, consider defining values to use with record()
 
-	//noInterrupts();
-	//multithreaded madness goes here
-	//OCR1A = 0xAF;
-	//TIMSK1 |= _BV(OCIE0A);
-	//interrupts();
-	// TIMER 1 for interrupt frequency 500 Hz:
-	//cli(); // stop interrupts
+	//	setting magic numbers to make Timer1 operate at 500 Hz
 	TCCR1A = 0; // set entire TCCR1A register to 0
 	TCCR1B = 0; // same for TCCR1B
 	TCNT1 = 0; // initialize counter value to 0
@@ -285,11 +287,11 @@ void loop()
 {
 	
 	
-	for (int i = 0; i < 6; ++i)
+	for (int i = 0; i < 6; ++i)	//	compare currently held button states to debounced button states, do stuff on change
 	{
 		readBtn(i);
 	}
-	if (pressing == 4)
+	if (pressing == 4)	//	if active button is replay
 	{
 		replay();
 	}
@@ -298,8 +300,8 @@ void loop()
 ISR(TIMER1_COMPA_vect)          // interrupt service routine keyed to TIMER1_COMPA
 {
 	
-	++playTime;
-	for (int i = 0; i < 6; ++i)
+	++playTime;	//	increment duration timer
+	for (int i = 0; i < numButtons; ++i)	//	debounce button states
 	{
 		debounceBtn(i);
 		
